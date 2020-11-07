@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 	kubeinformers "k8s.io/client-go/informers"
 	corev1 "k8s.io/api/core/v1"
+	//appsv1 "k8s.io/api/apps/v1"
 )
 
 var (
@@ -40,11 +41,12 @@ func main() {
 	}
 	api = clientset.CoreV1()
 
+	createPod(clientset,"develop")
 
 	//watchPods(clientset)
 	//findPodByOptions	
 	//findPodByLabelSelector()
-	findPodTeachStoreCourse()
+	// findPodTeachStoreCourse()
 	//listPodsEachSeconds()
 }
 
@@ -66,6 +68,32 @@ func watchPods(clientset *kubernetes.Clientset) {
 	informer.Run(stopper)
 }
 
+func createPod(clientset *kubernetes.Clientset, namespace string) {
+	pod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-pod",
+			Namespace: "develop",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "nginx",
+				    Image: "nginx",
+				},
+			},
+		},
+	}
+	result, err := api.Pods(namespace).Create(context.TODO(),pod,metav1.CreateOptions{})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Created Pod %s",result.Name)
+}
+
 func findPodByLabelSelector() {
 	listOptions := metav1.ListOptions{
 		LabelSelector:"app=teachstore-course",
@@ -84,13 +112,12 @@ func findPodTeachStoreCourse() {
 	if podFoundByName != nil {
 		log.Printf("POD %s \033[0;33mFOUND\033[0;0m!",podFoundByName.Name)
 	}
-	containers := podFoundByName.Spec.Containers
+	container  := podFoundByName.Spec.Containers[0]
 	fmt.Printf("%s\n",container.Image)
 	/*
-	container  := podFoundByName.Spec.Containers[0]
+	containers := podFoundByName.Spec.Containers
 	fmt.Printf("%s",&container)
 	fmt.Printf("%s\n",container.Name)
-	
 	fmt.Printf("%s\n",container.Command)
 	*/
 }
