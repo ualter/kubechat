@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"path/filepath"
-	"time"
 	"log"
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,16 +37,38 @@ func main() {
 	}
 	api = clientset.CoreV1()
 
+
+	listOptions := metav1.ListOptions{LabelSelector:"app=teachstore-course"}
+	pods := findPodByOptions(&listOptions,"develop")
+	log.Printf("Total \033[0;33m%d\033[0;0m Pods found", len(pods.Items))
+	for idx, p := range pods.Items {
+		//log.Printf("\033[0;34%d\033[0;0 - \033[0;33 %s\033[0;0",idx,p.Name)
+		log.Printf("\033[0;33m[%d]\033[0;0m - \033[0;36m%s\033[0;0m",idx+1,p.Name)
+	}
+	
+
+	//findPodTeachStoreCourse()
+	//listPodsEachSeconds()
+}
+
+func findPodTeachStoreCourse() {
+	podFoundByName := findPodByName("teachstore-course-1.0.0-674b855dc-2j787","develop")
+	if podFoundByName != nil {
+		log.Printf("POD %s \033[0;33mFOUND\033[0;0m!",podFoundByName.Name)
+	}
+}
+
+func listPodsEachSeconds() {
+	// List Pods each 10 seconds
 	for {
+		// All of them
 		listPods(nil)
+		fmt.Printf("")
+
+		// With LabelSelector
 		options := metav1.ListOptions{LabelSelector:"app=teachstore-course"}
 		fmt.Println("")
 		listPods(&options)
-
-		/*podFound := getPod("steachstore-course-1.0.0-674b855dc-2j787","develop")
-		if podFound != nil {
-			log.Printf("podFond=%s",podFound.Name)
-		}*/
 
 		time.Sleep(10 * time.Second)
 	}
@@ -70,17 +92,26 @@ func listPods(listOptions *metav1.ListOptions) {
 	}
 }
 
-func getPod(podName string, namespace string) *corev1.Pod {
+func findPodByName(podName string, namespace string) *corev1.Pod {
 	pod, err := api.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+
 	if errors.IsNotFound(err) {
-		log.Printf("Pod %s in namespace %s not found\n", podName, namespace)
+		log.Printf("Pod %s in namespace %s \033[0;33mNOT FOUND\033[0;0m!\n", podName, namespace)
 		return nil
 	} else if err != nil {
 		panic(err.Error())
-	} else {
+	}/* else {
 		log.Printf("Pod %s in namespace %s found!", podName, namespace)
-	}
+	}*/
 	return pod
+}
+
+func findPodByOptions(listOptions *metav1.ListOptions, namespace string) *corev1.PodList {
+	pods, err := api.Pods(namespace).List(context.TODO(), *listOptions)
+	if err != nil {
+		panic(err.Error())
+	}
+	return pods
 }
 
 func init() {
