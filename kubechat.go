@@ -10,10 +10,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	kubernetes "k8s.io/client-go/kubernetes"
 	cgv1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/clientcmd"	
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/homedir"
+	kubeinformers "k8s.io/client-go/informers"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -26,6 +28,7 @@ var (
 func main() {
 	flag.Parse()
 
+	// kubeconfig := os.Getenv("KUBECONFIG")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
 		panic(err.Error())
@@ -38,24 +41,56 @@ func main() {
 	api = clientset.CoreV1()
 
 
-	listOptions := metav1.ListOptions{LabelSelector:"app=teachstore-course"}
+	//watchPods(clientset)
+	//findPodByOptions	
+	//findPodByLabelSelector()
+	findPodTeachStoreCourse()
+	//listPodsEachSeconds()
+}
+
+func watchPods(clientset *kubernetes.Clientset) {
+	factory := kubeinformers.NewSharedInformerFactory(clientset, 0)
+	informer := factory.Core().V1().Pods().Informer()
+	stopper := make(chan struct{})
+	defer close(stopper)
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			mObj := obj.(metav1.Object)
+			log.Printf("New Pod Added to Store: %s", mObj.GetName())
+		},
+		UpdateFunc: func(old, new interface{}) {
+			mObj := new.(metav1.Object)
+			log.Printf("Update Pod at Store: %s", mObj.GetName())
+		},
+	})
+	informer.Run(stopper)
+}
+
+func findPodByLabelSelector() {
+	listOptions := metav1.ListOptions{
+		LabelSelector:"app=teachstore-course",
+	}
+	//FieldSelector: fmt.Sprintf("spec.ports[0].nodePort=%s", port),
 	pods := findPodByOptions(&listOptions,"develop")
 	log.Printf("Total \033[0;33m%d\033[0;0m Pods found", len(pods.Items))
 	for idx, p := range pods.Items {
 		//log.Printf("\033[0;34%d\033[0;0 - \033[0;33 %s\033[0;0",idx,p.Name)
 		log.Printf("\033[0;33m[%d]\033[0;0m - \033[0;36m%s\033[0;0m",idx+1,p.Name)
 	}
-	
-
-	//findPodTeachStoreCourse()
-	//listPodsEachSeconds()
 }
 
 func findPodTeachStoreCourse() {
-	podFoundByName := findPodByName("teachstore-course-1.0.0-674b855dc-2j787","develop")
+	podFoundByName := findPodByName("teachstore-course-1.0.0-674b855dc-4l6nr","develop")
 	if podFoundByName != nil {
 		log.Printf("POD %s \033[0;33mFOUND\033[0;0m!",podFoundByName.Name)
 	}
+	container := podFoundByName.Spec.Containers[0]
+	/*
+	fmt.Printf("%s",&container)
+	fmt.Printf("%s\n",container.Name)
+	fmt.Printf("%s\n",container.Image)
+	fmt.Printf("%s\n",container.Command)
+	*/
 }
 
 func listPodsEachSeconds() {
@@ -121,3 +156,4 @@ func init() {
 		flag.StringVar(&kubeconfig,"kubeconfig", "~/.kube/config", "absolute path to the kubeconfig file")
 	}
 }
+
