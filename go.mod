@@ -15,7 +15,7 @@ require (
 	golang.org/x/text v0.3.4 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	k8s.io/api v0.19.3 // indirect
+	k8s.io/api v0.19.3
 	k8s.io/apimachinery v0.19.3
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/klog v1.0.0 // indirect
@@ -25,6 +25,6 @@ require (
 )
 
 replace (
-    k8s.io/api => k8s.io/api v0.0.0-20201104162213-01c5338f427f
-    k8s.io/client-go => k8s.io/client-go v0.0.0-20201104162436-68bb4a9525d8
+	k8s.io/api => k8s.io/api v0.0.0-20201104162213-01c5338f427f
+	k8s.io/client-go => k8s.io/client-go v0.0.0-20201104162436-68bb4a9525d8
 )
