@@ -84,11 +84,13 @@ func findPodTeachStoreCourse() {
 	if podFoundByName != nil {
 		log.Printf("POD %s \033[0;33mFOUND\033[0;0m!",podFoundByName.Name)
 	}
-	container := podFoundByName.Spec.Containers[0]
+	containers := podFoundByName.Spec.Containers
+	fmt.Printf("%s\n",container.Image)
 	/*
+	container  := podFoundByName.Spec.Containers[0]
 	fmt.Printf("%s",&container)
 	fmt.Printf("%s\n",container.Name)
-	fmt.Printf("%s\n",container.Image)
+	
 	fmt.Printf("%s\n",container.Command)
 	*/
 }
