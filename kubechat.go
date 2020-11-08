@@ -62,8 +62,9 @@ func main() {
 	//findPodTeachStoreCourse()
 	//listPodsEachSeconds()
 	//applyPatchDeploymentWithReplicas(Int32Ptr(1))
-	applyPatchDeploymentAddContainer()
+	//applyPatchDeploymentAddContainer()
 	//applyPatchDeploymentRemoveContainer()
+	applyPatchPodAddContainer()
 }
 
 func startK8sClient() *kubernetes.Clientset {
@@ -309,6 +310,74 @@ func applyPatchDeploymentWithReplicas(numberOfReplicas *int32) {
 	} else {
 		log.Printf("%s",result)
 	}
+}
+
+func applyPatchPodAddContainer() {
+	namespace := "develop" 
+	podName   := "teachstore-course-1.0.0-674b855dc-9qxcn"
+	// Read the Pod to be Patched
+	pod, err := apiCoreV1.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	// Converts Actual Pod to JSON
+	jsonPodActual, err := json.Marshal(pod)
+	if err != nil {
+		panic(err.Error())
+	}
+	_ = jsonPodActual
+	// Change the Pod (modification) - Adding a New Container
+	/*pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, corev1.EphemeralContainer{
+		EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+			Name:            "busybox",
+			Image:           "busybox",
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Command: []string{
+				"sleep",
+				"3600",
+			},
+		},
+		TargetContainerName: pod.Name,
+	})*/
+	pod.Spec.EphemeralContainers = []corev1.EphemeralContainer{
+		{
+			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name:            "busybox",
+				Image:           "busybox",
+				ImagePullPolicy: corev1.PullIfNotPresent,
+				Command: []string{
+					"sleep",
+					"3600",
+				},
+			},
+		},
+	}
+	// Converts Future Pod to JSON
+	jsonPodFuture, err := json.Marshal(pod)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Create a JSON Patch (http://jsonpatch.com/ JSON Patch is specified in RFC 6902 from the IETF) - using library for that
+	patch, err := jsonpatch.CreatePatch(jsonPodActual, jsonPodFuture)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	patchBytes, err := json.MarshalIndent(patch, "", "  ")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println(string(patchBytes))
+
+	// Apply the Patch
+	result, err := apiCoreV1.Pods(namespace).Patch(context.TODO(),pod.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{},"ephemeralcontainers")
+	//result, err := apiCoreV1.Pods(namespace).Patch(context.TODO(),pod.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{})
+	if err != nil {
+		panic(err.Error())
+	} else {
+		log.Printf("%s",result.Spec.EphemeralContainers)
+		log.Printf("%s",result.Spec.EphemeralContainers)
+	}
+
 }
 
 func applyPatchDeploymentAddContainer() {
