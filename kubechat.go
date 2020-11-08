@@ -7,14 +7,20 @@ import (
 	"log"
 	"fmt"
 	"time"
+	"encoding/json"
+	coreerrors "errors"
 
+	jsonpatch "github.com/mattbaird/jsonpatch"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	pkgtypes "k8s.io/apimachinery/pkg/types"
 	kubernetes "k8s.io/client-go/kubernetes"
-	cgv1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	cgcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	cgappsv1 "k8s.io/client-go/kubernetes/typed/apps/v1"
 	"k8s.io/client-go/tools/clientcmd"	
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/homedir"
+	"k8s.io/client-go/util/retry"
 	kubeinformers "k8s.io/client-go/informers"
 	corev1 "k8s.io/api/core/v1"
 	//appsv1 "k8s.io/api/apps/v1"
@@ -23,12 +29,44 @@ import (
 var (
 	masterURL  string
 	kubeconfig string
-	api cgv1.CoreV1Interface
+	apiCoreV1 cgcorev1.CoreV1Interface
+	apiAppsV1 cgappsv1.AppsV1Interface
 )
+
+type PatchPathSpec struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value string `json:"value"`
+}
 
 func main() {
 	flag.Parse()
+	clientset := startK8sClient()
+	_ = clientset
 
+	/*pod := findPodByName("teachstore-course-1.0.0-674b855dc-hw9wt","develop")
+	if pod != nil {
+		log.Printf("POD %s \033[0;33mFOUND\033[0;0m!",pod.Name)
+	}
+	log.Printf("%s",pod.Name)
+	log.Printf("%s",pod.Spec.EphemeralContainers)*/
+
+	
+	
+	//updateDeployment(clientset)
+	//listDeployment(clientset)
+	//createPod(clientset,"develop")
+	//watchPods(clientset)
+	//findPodByOptions	
+	//findPodByLabelSelector()
+	//findPodTeachStoreCourse()
+	//listPodsEachSeconds()
+	//applyPatchDeploymentWithReplicas(Int32Ptr(1))
+	applyPatchDeploymentAddContainer()
+	//applyPatchDeploymentRemoveContainer()
+}
+
+func startK8sClient() *kubernetes.Clientset {
 	// kubeconfig := os.Getenv("KUBECONFIG")
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {
@@ -39,15 +77,9 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	api = clientset.CoreV1()
-
-	createPod(clientset,"develop")
-
-	//watchPods(clientset)
-	//findPodByOptions	
-	//findPodByLabelSelector()
-	// findPodTeachStoreCourse()
-	//listPodsEachSeconds()
+	apiCoreV1 = clientset.CoreV1()
+	apiAppsV1 = clientset.AppsV1()
+	return clientset
 }
 
 func watchPods(clientset *kubernetes.Clientset) {
@@ -66,6 +98,65 @@ func watchPods(clientset *kubernetes.Clientset) {
 		},
 	})
 	informer.Run(stopper)
+}
+
+func listDeployment(clientset *kubernetes.Clientset) {
+	deployments, err := apiAppsV1.Deployments("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error());
+	}
+	log.Printf("Total of Deployments...: \033[0;33m%d\033[0;0m",len(deployments.Items))
+	for idx, d := range deployments.Items {
+		log.Printf("[%d] \033[0;33m%s\033[0;0m",idx+1,d.Name)
+		log.Printf("    Labels:")
+		for k, v := range d.Spec.Selector.MatchLabels {
+			log.Printf(" \033[0;34m-->\033[0;33m %s\033[0;36m=\033[0;33m%s\033[0;0m",k,v)
+		}
+	}
+}
+
+func updateDeployment(clientset *kubernetes.Clientset) {
+	//TODO: those, it will be the entry arguments
+	labels    := "app=teachstore-course"
+	namespace := "develop"
+	replicas  := Int32Ptr(1)
+
+	if len(namespace) == 0 {
+		panic(coreerrors.New("The namespace must be informed"))
+	}
+
+	options := metav1.ListOptions{
+		LabelSelector: labels,
+	}
+	deployments, err := apiAppsV1.Deployments(namespace).List(context.TODO(), options)
+	if err != nil {
+		panic(err.Error());
+	}
+	if len(deployments.Items) > 0 {
+		log.Printf("Total of Deployments to Update...: \033[0;33m%d\033[0;0m",len(deployments.Items))
+		for idx, deploy := range deployments.Items {
+			log.Printf("[%d] \033[0;33m%s\033[0;0m",idx+1,deploy.Name)
+
+			retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				result, getErr := apiAppsV1.Deployments(namespace).Get(context.TODO(), deploy.Name, metav1.GetOptions{})
+				if getErr != nil {
+					panic(fmt.Errorf("Failed to get latest version of Deployment: %v", getErr))
+				}
+
+				result.Spec.Replicas = replicas
+			    // result.Spec.Template.Spec.Containers[0].Image = "nginx:1.13" // change nginx version
+				_, updateErr := apiAppsV1.Deployments(namespace).Update(context.TODO(), result, metav1.UpdateOptions{})
+				return updateErr
+			})
+			if retryErr != nil {
+				log.Panic("Update failed: %v", retryErr)
+				panic(retryErr)
+			}
+			log.Printf("Updated deployment done!")
+		}
+	} else {
+		log.Printf("No deployment found with the label: %s",labels)
+	}
 }
 
 func createPod(clientset *kubernetes.Clientset, namespace string) {
@@ -87,14 +178,14 @@ func createPod(clientset *kubernetes.Clientset, namespace string) {
 			},
 		},
 	}
-	result, err := api.Pods(namespace).Create(context.TODO(),pod,metav1.CreateOptions{})
+	result, err := apiCoreV1.Pods(namespace).Create(context.TODO(),pod,metav1.CreateOptions{})
 	if err != nil {
-		panic(err)
+		panic(err.Error());
 	}
 	fmt.Printf("Created Pod %s",result.Name)
 }
 
-func findPodByLabelSelector() {
+func findPodByLabelSelector() *corev1.PodList {
 	listOptions := metav1.ListOptions{
 		LabelSelector:"app=teachstore-course",
 	}
@@ -105,6 +196,7 @@ func findPodByLabelSelector() {
 		//log.Printf("\033[0;34%d\033[0;0 - \033[0;33 %s\033[0;0",idx,p.Name)
 		log.Printf("\033[0;33m[%d]\033[0;0m - \033[0;36m%s\033[0;0m",idx+1,p.Name)
 	}
+	return pods
 }
 
 func findPodTeachStoreCourse() {
@@ -145,7 +237,7 @@ func listPods(listOptions *metav1.ListOptions) {
 	} else {
 	   log.Printf("\033[0;33mListing PODs with Label \033[0;36m%s\033[0;0m", listOptions.LabelSelector)	
 	}
-	pods, err := api.Pods("").List(context.TODO(), *listOptions)
+	pods, err := apiCoreV1.Pods("").List(context.TODO(), *listOptions)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -157,7 +249,7 @@ func listPods(listOptions *metav1.ListOptions) {
 }
 
 func findPodByName(podName string, namespace string) *corev1.Pod {
-	pod, err := api.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
+	pod, err := apiCoreV1.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 
 	if errors.IsNotFound(err) {
 		log.Printf("Pod %s in namespace %s \033[0;33mNOT FOUND\033[0;0m!\n", podName, namespace)
@@ -171,11 +263,136 @@ func findPodByName(podName string, namespace string) *corev1.Pod {
 }
 
 func findPodByOptions(listOptions *metav1.ListOptions, namespace string) *corev1.PodList {
-	pods, err := api.Pods(namespace).List(context.TODO(), *listOptions)
+	pods, err := apiCoreV1.Pods(namespace).List(context.TODO(), *listOptions)
 	if err != nil {
 		panic(err.Error())
 	}
 	return pods
+}
+
+func applyPatchDeploymentWithReplicas(numberOfReplicas *int32) {
+	// Read the Deployment to be Patched
+	deployment, err := apiAppsV1.Deployments("develop").Get(context.TODO(), "teachstore-course-1.0.0",metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	// Converts Actual Deployment to JSON
+	jsonDeploymentBefore, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Change the Deployment (modification)
+	deployment.Spec.Replicas = numberOfReplicas
+	jsonDeploymentAfter, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Create a JSON Patch (http://jsonpatch.com/ JSON Patch is specified in RFC 6902 from the IETF) - using library for that
+	patch, err := jsonpatch.CreatePatch(jsonDeploymentBefore, jsonDeploymentAfter)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	patchBytes, err := json.MarshalIndent(patch, "", "  ")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println(string(patchBytes))
+	/*ko := &appsv1.Deployment{}
+	ko.Spec.Template.Spec.Containers = append(ko.Spec.Template.Spec.Containers, corev1.Container{
+		Name:            "busybox-new",
+		Image:           "busybox",
+	})*/
+    // Apply the Patch
+	result, err := apiAppsV1.Deployments("develop").Patch(context.TODO(),deployment.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{})
+	if err != nil {
+		panic(err.Error())
+	} else {
+		log.Printf("%s",result)
+	}
+}
+
+func applyPatchDeploymentAddContainer() {
+	// Read the Deployment to be Patched
+	deployment, err := apiAppsV1.Deployments("develop").Get(context.TODO(), "teachstore-course-1.0.0",metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	// Converts Actual Deployment to JSON
+	jsonDeploymentBefore, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Change the Deployment (modification) - Adding a New Container
+	deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, corev1.Container{
+		Name:            "busybox",
+		Image:           "busybox",
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{
+			"sleep",
+			"3600",
+		},
+	})
+	jsonDeploymentAfter, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Create a JSON Patch (http://jsonpatch.com/ JSON Patch is specified in RFC 6902 from the IETF) - using library for that
+	patch, err := jsonpatch.CreatePatch(jsonDeploymentBefore, jsonDeploymentAfter)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	patchBytes, err := json.MarshalIndent(patch, "", "  ")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println(string(patchBytes))
+	
+    // Apply the Patch
+	result, err := apiAppsV1.Deployments("develop").Patch(context.TODO(),deployment.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{})
+	if err != nil {
+		panic(err.Error())
+	} else {
+		log.Printf("%s",result)
+	}
+	
+}
+
+func applyPatchDeploymentRemoveContainer() {
+	// Read the Deployment to be Patched
+	deployment, err := apiAppsV1.Deployments("develop").Get(context.TODO(), "teachstore-course-1.0.0",metav1.GetOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+	// Converts Actual Deployment to JSON
+	jsonDeploymentBefore, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Change the Deployment (modification) - Remove Container
+	deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers[0:1])
+	jsonDeploymentAfter, err := json.Marshal(deployment)
+	if err != nil {
+		panic(err.Error())
+	}
+	// Create a JSON Patch (http://jsonpatch.com/ JSON Patch is specified in RFC 6902 from the IETF) - using library for that
+	patch, err := jsonpatch.CreatePatch(jsonDeploymentBefore, jsonDeploymentAfter)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	patchBytes, err := json.MarshalIndent(patch, "", "  ")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println(string(patchBytes))
+	
+    // Apply the Patch
+	result, err := apiAppsV1.Deployments("develop").Patch(context.TODO(),deployment.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{})
+	if err != nil {
+		panic(err.Error())
+	} else {
+		log.Printf("%s",result)
+	}
+	
 }
 
 func init() {
