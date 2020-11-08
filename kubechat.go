@@ -315,7 +315,7 @@ func applyPatchDeploymentWithReplicas(numberOfReplicas *int32) {
 
 func addEphemeralContainerToPod() {
 	namespace := "develop" 
-	podName   := "teachstore-course-1.0.0-674b855dc-hc5t8"
+	podName   := "teachstore-course-1.0.0-575dbd55db-94llm"
 	// Read the Pod to be Patched
 	pod, err := apiCoreV1.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
@@ -335,6 +335,13 @@ func addEphemeralContainerToPod() {
 			},
 		},
 	}
+	
+	// Investigate later, why this attribute can be updated from here
+	// Reason: Probably the Pod must be recreted when this attributed changes, that is, it's not logical/possible to update  this in a running Pod
+	//fmt.Printf("Antes %t \n",pod.Spec.ShareProcessNamespace)
+	//pod.Spec.ShareProcessNamespace = &[]bool{false}[0]
+	//fmt.Printf("Despues %t \n",*pod.Spec.ShareProcessNamespace)
+
 	pod.Spec.EphemeralContainers = containers
 	if _, err := apiCoreV1.Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err == nil {
 		panic(err.Error())
