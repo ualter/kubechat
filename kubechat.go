@@ -64,7 +64,8 @@ func main() {
 	//applyPatchDeploymentWithReplicas(Int32Ptr(1))
 	//applyPatchDeploymentAddContainer()
 	//applyPatchDeploymentRemoveContainer()
-	applyPatchPodAddContainer()
+	addEphemeralContainerToPod()
+	//removeEphemeralContainerFromPod()
 }
 
 func startK8sClient() *kubernetes.Clientset {
@@ -312,72 +313,48 @@ func applyPatchDeploymentWithReplicas(numberOfReplicas *int32) {
 	}
 }
 
-func applyPatchPodAddContainer() {
+func addEphemeralContainerToPod() {
 	namespace := "develop" 
-	podName   := "teachstore-course-1.0.0-674b855dc-9qxcn"
+	podName   := "teachstore-course-1.0.0-674b855dc-hc5t8"
 	// Read the Pod to be Patched
 	pod, err := apiCoreV1.Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
-	// Converts Actual Pod to JSON
-	jsonPodActual, err := json.Marshal(pod)
-	if err != nil {
-		panic(err.Error())
-	}
-	_ = jsonPodActual
-	// Change the Pod (modification) - Adding a New Container
-	/*pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, corev1.EphemeralContainer{
-		EphemeralContainerCommon: corev1.EphemeralContainerCommon{
-			Name:            "busybox",
-			Image:           "busybox",
-			ImagePullPolicy: corev1.PullIfNotPresent,
-			Command: []string{
-				"sleep",
-				"3600",
-			},
-		},
-		TargetContainerName: pod.Name,
-	})*/
-	pod.Spec.EphemeralContainers = []corev1.EphemeralContainer{
+
+	containers :=  []corev1.EphemeralContainer{
 		{
 			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
-				Name:            "busybox",
-				Image:           "busybox",
-				ImagePullPolicy: corev1.PullIfNotPresent,
-				Command: []string{
-					"sleep",
-					"3600",
-				},
+				Name:                     "busybox",
+				Image:                    "busybox",
+				ImagePullPolicy:          corev1.PullIfNotPresent,
+				Command:  []string{"sh"},
+				Stdin: true,
+				TTY: true,
+				TerminationMessagePolicy: "File",
 			},
 		},
 	}
-	// Converts Future Pod to JSON
-	jsonPodFuture, err := json.Marshal(pod)
+	pod.Spec.EphemeralContainers = containers
+	if _, err := apiCoreV1.Pods(namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err == nil {
+		panic(err.Error())
+	}
+	ec, err := apiCoreV1.Pods(namespace).GetEphemeralContainers(context.TODO(), pod.Name, metav1.GetOptions{})
 	if err != nil {
 		panic(err.Error())
 	}
-	// Create a JSON Patch (http://jsonpatch.com/ JSON Patch is specified in RFC 6902 from the IETF) - using library for that
-	patch, err := jsonpatch.CreatePatch(jsonPodActual, jsonPodFuture)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	patchBytes, err := json.MarshalIndent(patch, "", "  ")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Println(string(patchBytes))
 
-	// Apply the Patch
-	result, err := apiCoreV1.Pods(namespace).Patch(context.TODO(),pod.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{},"ephemeralcontainers")
-	//result, err := apiCoreV1.Pods(namespace).Patch(context.TODO(),pod.Name,pkgtypes.JSONPatchType,patchBytes,metav1.PatchOptions{})
-	if err != nil {
+	ec.EphemeralContainers = containers
+	if _, err = apiCoreV1.Pods(namespace).UpdateEphemeralContainers(context.TODO(), pod.Name, ec, metav1.UpdateOptions{}); err != nil {
 		panic(err.Error())
-	} else {
-		log.Printf("%s",result.Spec.EphemeralContainers)
-		log.Printf("%s",result.Spec.EphemeralContainers)
 	}
+}
 
+func removeEphemeralContainerFromPod() {
+	log.Printf("Ops! Not possible right now to remove Ephemeral Containers")
+	log.Printf("It will be implemented as an enhancements, check here the status: https://github.com/kubernetes/enhancements/pull/1690")
+	log.Printf("Maybe, it will be available at version 1.21 of Kubernetes, see here: https://github.com/kubernetes/kubernetes/issues/84764#issuecomment-718567319")
+	log.Printf("Suggestion: do the same with the command \"kubectl alpha debug\", just delete de Pod :-)")
 }
 
 func applyPatchDeploymentAddContainer() {
