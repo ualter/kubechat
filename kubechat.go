@@ -96,14 +96,14 @@ func waitForPodToBeReady() error {
 	return wait.PollImmediate(2*time.Second, 50*time.Second, func() (bool, error) {
 		fmt.Printf(".\n")
 		pod, err := apiCoreV1.Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-		if err != nil || isPodPodReady(pod) {
+		if err != nil || isPodReady(pod) {
 			return true, nil
 		}
 		return false, nil
 	})
 }
 
-func isPodPodReady(pod *corev1.Pod) bool {
+func isPodReady(pod *corev1.Pod) bool {
 	for _, c := range pod.Status.Conditions {
 		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
 			return true
