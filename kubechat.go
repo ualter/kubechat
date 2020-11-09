@@ -24,6 +24,8 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	corev1 "k8s.io/api/core/v1"
 	//appsv1 "k8s.io/api/apps/v1"
+
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 var (
@@ -64,8 +66,10 @@ func main() {
 	//applyPatchDeploymentWithReplicas(Int32Ptr(1))
 	//applyPatchDeploymentAddContainer()
 	//applyPatchDeploymentRemoveContainer()
-	addEphemeralContainerToPod()
+	//addEphemeralContainerToPod()
 	//removeEphemeralContainerFromPod()
+	waitForPodToBeReady()
+
 }
 
 func startK8sClient() *kubernetes.Clientset {
@@ -82,6 +86,30 @@ func startK8sClient() *kubernetes.Clientset {
 	apiCoreV1 = clientset.CoreV1()
 	apiAppsV1 = clientset.AppsV1()
 	return clientset
+}
+
+func waitForPodToBeReady() error {
+	namespace := "develop"
+	podName := "teachstore-course-1.0.0-575dbd55db-lst9v"
+
+	// Try every 2 seconds, until it returns true, an error, or the timeout(10 seconds) is reached.
+	return wait.PollImmediate(2*time.Second, 50*time.Second, func() (bool, error) {
+		fmt.Printf(".\n")
+		pod, err := apiCoreV1.Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if err != nil || isPodPodReady(pod) {
+			return true, nil
+		}
+		return false, nil
+	})
+}
+
+func isPodPodReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 func watchPods(clientset *kubernetes.Clientset) {
