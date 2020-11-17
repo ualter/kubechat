@@ -69,7 +69,6 @@ func main() {
 	//addEphemeralContainerToPod()
 	//removeEphemeralContainerFromPod()
 	waitForPodToBeReady()
-
 }
 
 func startK8sClient() *kubernetes.Clientset {
@@ -90,17 +89,21 @@ func startK8sClient() *kubernetes.Clientset {
 
 func waitForPodToBeReady() error {
 	namespace := "develop"
-	podName := "teachstore-course-1.0.0-575dbd55db-lst9v"
+	podName := "teachstore-course-1.0.0-575dbd55db-27tqv"
 
 	// Try every 2 seconds, until it returns true, an error, or the timeout(10 seconds) is reached.
 	return wait.PollImmediate(2*time.Second, 50*time.Second, func() (bool, error) {
 		fmt.Printf(".\n")
 		pod, err := apiCoreV1.Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if err != nil || isPodReady(pod) {
+			podReady(podName)
 			return true, nil
 		}
 		return false, nil
 	})
+}
+func podReady(podname string) {
+	fmt.Printf("Pod %s is ready to work! \n", podname)
 }
 
 func isPodReady(pod *corev1.Pod) bool {
